@@ -38,8 +38,8 @@ Mẫu đã chọn sẵn cấu hình đã chạy thử trong dự án:
 ```dotenv
 SOC_AI_TRANSFORM_PROVIDER=gemini
 GEMINI_API_KEY=
-SOC_AI_TRANSFORM_MODEL=gemini-2.5-flash
-SOC_AI_TRANSFORM_SMALL_MODEL=gemini-2.5-flash
+SOC_AI_TRANSFORM_MODEL=gemini-3.1-flash-lite
+SOC_AI_TRANSFORM_SMALL_MODEL=gemini-3.1-flash-lite
 SOC_AI_TRANSFORM_LLM_TIMEOUT=45
 ```
 
@@ -91,8 +91,57 @@ uv run --frozen --extra dev ruff check SOC_AI_TRANSFORM evals scripts
 Mặc định bộ deterministic chạy offline với model giả lập.
 
 Dự án có runner LifeMate dùng transcript và SDK chính thức, chưa có evaluator điểm BTC.
-Voice gateway là tính năng tuỳ chọn, cài bằng `uv sync --frozen --extra voice`;
-pipeline PhoWhisper của cuộc thi chưa được tích hợp.
+Voice gateway là tính năng tuỳ chọn, cài bằng `uv sync --frozen --extra voice`.
+ASR LifeMate dùng PhoWhisper medium + LoRA improved v2, cài bằng
+`uv sync --frozen --extra asr` (độc lập với voice gateway).
+
+## Audio → ASR → LifeMate trên dashboard
+
+`evaluation_improved_v2` chứa `metrics.json` và `test_predictions.jsonl`, không chứa
+trọng số. ASR trực tiếp dùng base `vinai/PhoWhisper-medium` tại revision
+`55a7e3eb6c906de891f8f06a107754427dd3be79` và LoRA `step_00000080/adapter`.
+Trọng số base tải từ Hugging Face ở lần chạy đầu; những lần sau dùng cache.
+
+Với cấu trúc workspace gồm repo, `ASR_model`, `zl_dataset`, `skills` và `rules`,
+đặt các dòng sau trong `.env` ở gốc repo:
+
+```dotenv
+SOC_AI_TRANSFORM_BUSINESS_SKILLS_ROOT=..
+SOC_AI_TRANSFORM_LIFEMATE_DATA_ROOT=../zl_dataset/train+public_test
+SOC_AI_TRANSFORM_ASR_EVALUATION_ROOT=../ASR_model/evaluation_improved_v2
+SOC_AI_TRANSFORM_ASR_ADAPTER=models/phowhisper-medium-improved-v2/adapter
+SOC_AI_TRANSFORM_ASR_DEVICE=auto
+```
+
+```powershell
+uv sync --frozen --extra asr
+uv run --frozen --extra asr SOC_AI_TRANSFORM dashboard
+```
+
+Trên trang **LifeMate → Chạy thử**:
+
+1. Chọn split/mẫu. Để nói trực tiếp, bấm **Ghi âm bằng micro**, cho phép trình duyệt
+   dùng micro, nói yêu cầu rồi bấm **Dừng & nhận dạng**. Bản ghi được chuyển thành WAV
+   và tự gửi sang ASR local. Bạn có thể nghe lại bản ghi ngay trên trang.
+   Micro tự dừng khi đạt giới hạn 120 giây / 16 MB; bấm **Huỷ ghi âm** để bỏ bản ghi.
+   Rời trang LifeMate sẽ dừng micro. Cần trình duyệt hỗ trợ micro tại localhost hoặc HTTPS.
+   Bản ghi thay câu hiện tại, context và history vẫn thuộc mẫu đã chọn.
+2. Bấm **Chạy ASR từ audio**. Hệ thống nhận dạng cả câu hiện tại và audio user trong
+   history bằng cùng checkpoint. Mỗi file tối đa 16 MB, 120 giây; audio dài được
+   chia đoạn 30 giây. GPU CUDA được dùng nếu khả dụng, nếu không dùng CPU.
+   Nút này dùng để nhận dạng lại bản ghi, audio của mẫu hoặc file WAV/FLAC/OGG bạn chọn.
+3. Hoặc bấm **Dùng prediction có sẵn** để đọc `prediction` từ file đánh giá,
+   không chạy model. Chỉ dùng được khi có đủ prediction cho câu hiện tại và history;
+   tập đánh giá hiện có không bao phủ toàn bộ train/public_test.
+4. Kiểm tra/sửa transcript rồi bấm **Chạy yêu cầu**. Transcript history từ ASR đi
+   cùng lượt chạy; không thay bằng reference/nhãn hoặc transcript của lượt khác.
+
+ASR chạy local, không cần Gemini key. Bước chạy agent vẫn cần API key của provider.
+Không tự chạy agent sau ASR. File audio tải lên chỉ xử lý trong bộ nhớ của lượt ASR;
+trọng số và dữ liệu đánh giá không được chép vào Git. API nhận dạng là
+`POST /api/lifemate/asr`; nhận `split`, `sample_id`, `mode` (`live`/`saved`),
+và tuỳ chọn `audio_base64` cho câu hiện tại. `/api/lifemate/run` nhận thêm
+`asr_transcripts` từ kết quả nhận dạng để sử dụng đúng history.
 
 ## Skill nghiệp vụ LifeMate
 
@@ -127,7 +176,8 @@ Runner gửi transcript, context, history và kết quả tool tới API model �
 Mỗi mẫu chỉ tạo một `ToolEnv`, chỉ truy cập trạng thái qua API SDK, và xuất nguyên log
 `env.get_tool_calls()` cùng `env.get_state_hash()`. Nếu có lỗi giữa chừng, log đã thực thi
 được lưu trước khi dừng; không tự chạy lại từ đầu. File kết quả phải là file mới.
-Đây là đường chạy thử nghiệm, chưa có evaluator điểm BTC hoặc ASR trực tiếp từ audio.
+Đây là đường chạy thử nghiệm, chưa có evaluator điểm BTC. CLI nhận transcript;
+dashboard hỗ trợ ASR trực tiếp từ audio như hướng dẫn phía trên.
 Dashboard mặc định mở LifeMate và dùng chính runner này khi bấm Chạy.
 
 ## Harness và memory DB

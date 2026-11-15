@@ -21,6 +21,7 @@ import json
 import os
 from dataclasses import dataclass
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 from SOC_AI_TRANSFORM.config import Settings
 
@@ -303,6 +304,11 @@ class OpenAICompatClient:
         import openai
 
         self._client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+        # Google's compatibility endpoint uses max_tokens. Sending the newer
+        # OpenAI parameter can hang instead of returning a parameter error.
+        self._token_parameter = ("max_tokens" if urlsplit(base_url or "").hostname
+                                 == "generativelanguage.googleapis.com"
+                                 else "max_completion_tokens")
         self.messages = SimpleNamespace(create=self._create, stream=self._stream)
 
     def _to_openai(self, *, model, messages, max_tokens, system=None, tools=None) -> dict:
@@ -341,7 +347,7 @@ class OpenAICompatClient:
                         })
 
         kwargs: dict = {"model": model, "messages": oai_messages,
-                        "max_completion_tokens": max_tokens}
+                        getattr(self, "_token_parameter", "max_completion_tokens"): max_tokens}
         if tools:
             kwargs["tools"] = [
                 {"type": "function",
@@ -365,7 +371,12 @@ class OpenAICompatClient:
             if "max_completion_tokens" not in m and "max_tokens" not in m:
                 raise
             k = dict(kwargs)
-            k["max_tokens"] = k.pop("max_completion_tokens", None)
+            if "max_completion_tokens" in k:
+                k["max_tokens"] = k.pop("max_completion_tokens")
+            elif "max_tokens" in k:
+                k["max_completion_tokens"] = k.pop("max_tokens")
+            else:
+                raise
             return self._client.chat.completions.create(**k, **extra)
 
     def _create(self, *, model, messages, max_tokens, system=None, tools=None):

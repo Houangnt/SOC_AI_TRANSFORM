@@ -69,13 +69,85 @@ def _enriched(split: str, sample_id: str) -> dict:
     return item
 
 
-def _prepare(split: str, sample_id: str, text: str) -> dict:
+def _prepare(split: str, sample_id: str, text: str, asr_transcripts: dict | None = None) -> dict:
     item = _enriched(split, sample_id)
+    if asr_transcripts is not None:
+        if not isinstance(asr_transcripts, dict) or any(
+            not isinstance(k, str) or not isinstance(v, str) or not v.strip()
+            for k, v in asr_transcripts.items()
+        ):
+            raise ValueError("Transcript ASR không hợp lệ")
+        # Require every spoken history turn from the ASR request, never substitute gold.
+        for turn in item.get("history", []):
+            if turn.get("role") == "user" and turn.get("audio"):
+                key = Path(turn["audio"].replace("\\", "/")).stem
+                turn["audio_text"] = asr_transcripts.get(key, "")
     item["audio_text"] = text
     return prepare_sample(item)
 
 
+def audio_path(split: str, sample_id: str, audio: str | None = None) -> Path:
+    item = inputs(split).get(sample_id)
+    if item is None:
+        raise ValueError("Unknown sample ID")
+    root = (data_root() / split).resolve()
+    path = (root / (audio or item.get("audio", "")).replace("\\", "/")).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise ValueError("Không tìm thấy audio trong bộ dữ liệu")
+    return path
+
+
+def recognize(payload: dict) -> dict:
+    """Prepare all speech for a sample without creating or executing a ToolEnv."""
+    import base64
+    import binascii
+
+    from SOC_AI_TRANSFORM.lifemate import asr
+
+    split, sample_id = payload.get("split", ""), payload.get("sample_id", "")
+    source = inputs(split).get(sample_id)
+    if source is None:
+        raise ValueError("Unknown sample ID")
+    mode = payload.get("mode", "live")
+    if mode not in ("live", "saved"):
+        raise ValueError("Chế độ ASR không hợp lệ")
+    item = json.loads(json.dumps(source))
+    spoken = [item] + [t for t in item.get("history", []) if t.get("role") == "user"]
+    saved = asr.predictions() if mode == "saved" else {}
+    mapping, details = {}, []
+    for index, turn in enumerate(spoken):
+        if not turn.get("audio"):
+            continue
+        key = Path(turn["audio"].replace("\\", "/")).stem
+        if mode == "saved":
+            text = saved.get(key, "")
+            if not text:
+                raise ValueError(f"Chưa có prediction cho {key}. Hãy chọn Chạy ASR từ audio.")
+            detail = {"source": "evaluation_improved_v2"}
+        else:
+            if index == 0 and payload.get("audio_base64"):
+                try:
+                    raw = base64.b64decode(payload["audio_base64"], validate=True)
+                except (ValueError, binascii.Error) as exc:
+                    raise ValueError("Dữ liệu audio tải lên không hợp lệ") from exc
+            else:
+                path = audio_path(split, sample_id, turn["audio"])
+                if path.stat().st_size > asr.MAX_AUDIO_BYTES:
+                    raise ValueError("Audio vượt quá 16 MB")
+                raw = path.read_bytes()
+            detail = asr.transcribe(raw)
+            text = detail["text"]
+        turn["audio_text"] = text
+        mapping[key] = text
+        details.append({"audio": key, "text": text, **detail})
+    prepared = prepare_sample(item)
+    return {"text": prepared["audio_text"], "history": prepared["history"],
+            "transcripts": mapping, "mode": mode, "clips": details}
+
+
 def info() -> dict:
+    from SOC_AI_TRANSFORM.lifemate import asr
+
     catalog = BusinessSkills()
     available = [split for split in SPLITS if (data_root() / split / f"{split}.jsonl").is_file()]
     settings = load_settings()
@@ -83,7 +155,8 @@ def info() -> dict:
             "provider": settings.provider, "model": settings.model,
             "skills": [{"id": item["skill"], "title": item.get("title", item["skill"]),
                         "description": item["description"]} for item in catalog.index.values()],
-            "orchestration": 1, "rules": len(catalog.architecture["shared_rules"])}
+            "orchestration": 1, "rules": len(catalog.architecture["shared_rules"]),
+            "asr": asr.status()}
 
 
 def samples(split: str) -> dict:
@@ -91,6 +164,8 @@ def samples(split: str) -> dict:
 
 
 def sample(split: str, sample_id: str) -> dict:
+    from SOC_AI_TRANSFORM.lifemate import asr
+
     item = _enriched(split, sample_id)
     text = item.get("audio_text", "")
     missing = ""
@@ -101,7 +176,10 @@ def sample(split: str, sample_id: str) -> dict:
     except ValueError as exc:
         missing = str(exc)
         prepared = {"history": []}
+    key = Path(item.get("audio", "").replace("\\", "/")).stem
     return {"id": sample_id, "text": text, "context": item["context"],
+            "audio_available": bool(item.get("audio")),
+            "saved_asr_available": key in asr.predictions(),
             "history": prepared["history"], "transcript_error": missing}
 
 
@@ -147,7 +225,7 @@ def stream(payload: dict, emit, *, session_id: str | None = None, source: str = 
     if not isinstance(text, str) or not text.strip():
         raise ValueError("Nhập transcript trước khi chạy")
     split, sample_id = payload.get("split", ""), payload.get("sample_id", "")
-    item = _prepare(split, sample_id, text.strip())
+    item = _prepare(split, sample_id, text.strip(), payload.get("asr_transcripts"))
     catalog = BusinessSkills()
     root = data_root()
     catalog_data = catalog_for(split)

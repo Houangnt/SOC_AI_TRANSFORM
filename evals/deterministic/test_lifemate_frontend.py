@@ -94,6 +94,46 @@ assert.equal(vm.runInContext('lifeMateCanRun()',context),true);
   assert.equal(vm.runInContext('CHAT[CHAT.length-1].submission.state_hash',context),'ENV_HASH');
   vm.runInContext("LM.sample.transcript_error='missing history'",context);
   assert.equal(vm.runInContext('lifeMateCanRun()',context),false);
+  // ASR is an explicit, separate step. Its history travels with the agent request.
+  context.fetch=async(url,options)=>{
+    requests.push({url,body:JSON.parse(options.body)});
+    assert.equal(vm.runInContext('lifeMateCanRun()',context),false);
+    return {ok:true,json:async()=>({text:'recognized current',mode:'live',
+      transcripts:{synthetic:'recognized current',synthetic_u1:'recognized history'},
+      history:[{role:'user',text:'recognized history'}],
+      clips:[{audio:'synthetic',text:'recognized current'}]})};
+  };
+  vm.runInContext(`LM.meta.asr={name:'PhoWhisper',adapter_available:true,
+    saved_predictions:155,max_seconds:120}; LM.sample.audio_available=true`,context);
+  assert.ok(vm.runInContext('lifeMateASR()',context).includes('Chạy ASR từ audio'));
+  await vm.runInContext("lifeMateRecognize('live')",context);
+  assert.equal(requests.length,3); // ASR did not automatically execute the agent.
+  assert.equal(requests[2].url,'/api/lifemate/asr');
+  assert.equal(vm.runInContext('LM.text',context),'recognized current');
+  assert.equal(vm.runInContext('LM.sample.history[0].text',context),'recognized history');
+  assert.equal(vm.runInContext('lifeMateCanRun()',context),true);
+  context.fetch=async(url,options)=>{
+    const payload=JSON.parse(options.body);
+    assert.equal(url,'/api/lifemate/run');
+    assert.equal(payload.asr_transcripts.synthetic_u1,'recognized history');
+    assert.equal(payload.text,'corrected current');
+    let sent=false;
+    return {ok:true,body:{getReader:()=>({read:async()=>{
+      if(sent) return {done:true}; sent=true;
+      return {done:false,value:wire};
+    }})}};
+  };
+  vm.runInContext("lifeMateEditText('corrected current')",context);
+  await vm.runInContext('lifeMateRun()',context);
+  // Failed ASR must retain the last good transcript and unlock controls.
+  context.fetch=async()=>({ok:true,json:async()=>({error:'Missing checkpoint'})});
+  await vm.runInContext("lifeMateRecognize('live')",context);
+  assert.equal(vm.runInContext('LM.text',context),'corrected current');
+  assert.equal(vm.runInContext('LM.asrBusy',context),false);
+  assert.equal(vm.runInContext('LM.error',context),'Missing checkpoint');
+  vm.runInContext("lifeMateAudioFile({name:'new.wav',size:128})",context);
+  assert.equal(vm.runInContext('lifeMateCanRun()',context),false);
+  assert.equal(vm.runInContext('LM.audioPending',context),true);
 })().catch(error=>{console.error(error);process.exitCode=1;});
 """
     result = subprocess.run([shutil.which("node"), "-e", script], cwd=repo,

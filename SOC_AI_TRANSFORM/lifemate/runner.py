@@ -98,9 +98,9 @@ def load_transcripts(path: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for record in records:
         key = record.get("audio", record.get("audio_path", record.get("id")))
-        text = record.get("transcript", record.get("phowhisper_transcript"))
+        text = record.get("transcript", record.get("phowhisper_transcript", record.get("prediction")))
         if not isinstance(key, str) or not isinstance(text, str):
-            raise TypeError("Transcript record needs audio/audio_path/id and transcript text")
+            raise TypeError("Transcript record needs audio/audio_path/id and transcript/prediction text")
         key = Path(key.replace("\\", "/")).stem
         if key in result and result[key] != text:
             raise ValueError(f"Conflicting transcripts for {key}")

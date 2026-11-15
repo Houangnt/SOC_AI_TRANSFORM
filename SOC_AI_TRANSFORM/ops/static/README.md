@@ -19,6 +19,7 @@ runs the bootstrap and must load last**.
 | file | what lives here |
 |------|-----------------|
 | `util.js`    | `esc`, markdown renderer, core globals (`D`, `editing`), `postJSON`, `reveal` |
+| `voice-recorder.js` | Bounded browser microphone capture and shared PCM WAV encoding; loaded before LifeMate and main |
 | `memory.js`  | inline Memory / SOUL / skill editing actions |
 | `models.js`  | `applyModel` (the one `/api/settings` writer), model picker / catalog / pins |
 | `render.js`  | formatters + chat card renderers (`stagesRow`/`teleFooter`) + chatlog + streaming + `sendChat` |

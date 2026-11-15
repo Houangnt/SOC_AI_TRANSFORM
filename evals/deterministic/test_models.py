@@ -10,6 +10,41 @@ from SOC_AI_TRANSFORM.loop import models
 RUN_LIVE_EVALS = os.getenv("SOC_AI_TRANSFORM_RUN_LIVE_EVALS") == "1"
 
 
+@pytest.mark.parametrize("endpoint,parameter", [
+    ("https://generativelanguage.googleapis.com/v1beta/openai/", "max_tokens"),
+    ("https://api.openai.com/v1", "max_completion_tokens"),
+])
+def test_output_budget_uses_endpoint_parameter(endpoint, parameter):
+    client = models.OpenAICompatClient(api_key="test-only", base_url=endpoint)
+    calls = []
+    response = SimpleNamespace(choices=[SimpleNamespace(
+        message=SimpleNamespace(content="OK", tool_calls=[]))], usage=None)
+    client._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
+        create=lambda **kwargs: calls.append(kwargs) or response)))
+    client.messages.create(model="test", max_tokens=123,
+                           messages=[{"role": "user", "content": "test"}])
+    assert calls[0][parameter] == 123
+    other = "max_tokens" if parameter == "max_completion_tokens" else "max_completion_tokens"
+    assert other not in calls[0]
+
+
+@pytest.mark.parametrize("parameter", ["max_tokens", "max_completion_tokens"])
+def test_budget_fallback_preserves_value(parameter):
+    client = models.OpenAICompatClient.__new__(models.OpenAICompatClient)
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise ValueError(f"Unsupported parameter: {parameter}")
+        return "ok"
+
+    client._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    assert client._call({"model": "test", parameter: 123}) == "ok"
+    other = "max_tokens" if parameter == "max_completion_tokens" else "max_completion_tokens"
+    assert calls[1][other] == 123 and parameter not in calls[1]
+
+
 def test_xai_grok_provider_uses_expected_key_endpoint_and_models(monkeypatch, tmp_path):
     captured = {}
 

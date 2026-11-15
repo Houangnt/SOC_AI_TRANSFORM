@@ -1,0 +1,77 @@
+{
+  "checkpoint": "step_00000080/adapter",
+  "adapter_sha256": "48321b01b6dbaacb6a41b9fb18b60321bf3e62bc9520995618d630603869b792",
+  "revision": "55a7e3eb6c906de891f8f06a107754427dd3be79",
+  "test_device": "cuda",
+  "test_dtype": "torch.float16",
+  "decode": {
+    "language": "vi",
+    "task": "transcribe",
+    "forced_decoder_ids": null,
+    "do_sample": false,
+    "num_beams": 1,
+    "max_new_tokens": 224,
+    "use_cache": true,
+    "return_timestamps": false
+  },
+  "dev_source": "rescored saved predictions, audio and references verified",
+  "test_source": "fresh inference on zl_dataset; epoch_05 from prior saved predictions",
+  "public_test": {
+    "clips": 634,
+    "labeled": 0
+  },
+  "metrics": {
+    "dev": {
+      "epoch_05": {
+        "clips": 232,
+        "wer": 14.219653179190752,
+        "word_acc": 85.78034682080924,
+        "cer": 10.165864098448369,
+        "sentence_acc": 12.931034482758621,
+        "word_errors": 738,
+        "ref_words": 5190,
+        "char_errors": 1710,
+        "ref_chars": 16821,
+        "exact": 30
+      },
+      "step_80": {
+        "clips": 232,
+        "wer": 14.315992292870906,
+        "word_acc": 85.6840077071291,
+        "cer": 10.213423696569764,
+        "sentence_acc": 12.931034482758621,
+        "word_errors": 743,
+        "ref_words": 5190,
+        "char_errors": 1718,
+        "ref_chars": 16821,
+        "exact": 30
+      }
+    },
+    "test": {
+      "epoch_05": {
+        "clips": 155,
+        "wer": 13.837535014005603,
+        "word_acc": 86.1624649859944,
+        "cer": 10.159689253344842,
+        "sentence_acc": 15.483870967741936,
+        "word_errors": 494,
+        "ref_words": 3570,
+        "char_errors": 1177,
+        "ref_chars": 11585,
+        "exact": 24
+      },
+      "step_80": {
+        "clips": 155,
+        "wer": 13.949579831932773,
+        "word_acc": 86.05042016806723,
+        "cer": 10.237375917134225,
+        "sentence_acc": 14.838709677419354,
+        "word_errors": 498,
+        "ref_words": 3570,
+        "char_errors": 1186,
+        "ref_chars": 11585,
+        "exact": 23
+      }
+    }
+  }
+}

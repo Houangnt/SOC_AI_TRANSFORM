@@ -2,12 +2,119 @@
 const LM = {started:false, ready:null, meta:null, tab:"run", split:"public_test", samples:[],
   sampleId:"", sample:null, text:"", loading:false, busy:false, phase:"",
   skills:[], tools:[], result:null, error:"", skill:null, filter:"", request:0,
-  catalog:null, toolFilter:"", onlyEnabled:true};
+  catalog:null, toolFilter:"", onlyEnabled:true, asrBusy:false, asrTranscripts:null,
+  asrResult:null, audioFile:null, audioPending:false, audioURL:null};
+const LM_MIC={starting:false,recorder:null,timer:null,token:0};
+
+function lifeMateMicActive(){return LM_MIC.starting || !!LM_MIC.recorder;}
+
+function lifeMateCancelMic(){
+  ++LM_MIC.token;
+  if(LM_MIC.recorder) LM_MIC.recorder.stop();
+  clearInterval(LM_MIC.timer);
+  LM_MIC.starting=false; LM_MIC.recorder=null; LM_MIC.timer=null;
+}
+
+async function lifeMateStartMic(){
+  if(!LM.sample || LM.busy || LM.loading || LM.asrBusy || lifeMateMicActive()) return;
+  const token=++LM_MIC.token;
+  LM_MIC.starting=true; LM.error=""; LM.phase="Đang xin quyền sử dụng micro…";
+  lifeMatePaint();
+  try {
+    const recorder=await startWavRecorder(LM.meta.asr.max_seconds,lifeMateFinishMic);
+    // Permission can resolve after navigation/cancellation. Release the mic immediately.
+    if(token!==LM_MIC.token){recorder.stop(); return;}
+    LM_MIC.recorder=recorder; LM_MIC.starting=false;
+    LM.phase="Đang ghi âm. Nói yêu cầu rồi bấm Dừng & nhận dạng.";
+    LM_MIC.timer=setInterval(()=>{
+      const timer=document.getElementById("lm-mic-timer");
+      if(timer && LM_MIC.recorder) timer.textContent=Math.floor(LM_MIC.recorder.seconds)+" giây";
+    },250);
+  } catch(error){
+    if(token===LM_MIC.token){
+      LM_MIC.starting=false; LM.phase="";
+      LM.error=error.name==="NotAllowedError" ? "Micro bị chặn. Cho phép Microphone trong trình duyệt rồi thử lại."
+        : error.name==="NotFoundError" ? "Không tìm thấy micro. Hãy kết nối micro rồi thử lại."
+        : "Không ghi âm được: "+error.message;
+    }
+  }
+  lifeMatePaint();
+}
+
+async function lifeMateFinishMic(){
+  if(!LM_MIC.recorder) return;
+  const seconds=LM_MIC.recorder.seconds, blob=LM_MIC.recorder.stop();
+  LM_MIC.recorder=null; clearInterval(LM_MIC.timer); LM_MIC.timer=null;
+  if(seconds<0.25){LM.error="Bản ghi quá ngắn. Hãy nói ít nhất một câu rồi dừng."; LM.phase=""; lifeMatePaint(); return;}
+  lifeMateAudioFile(new File([blob],"voice-"+Date.now()+".wav",{type:"audio/wav"}));
+  await lifeMateRecognize("live");
+}
+
+function lifeMateASR(){
+  const sample=LM.sample, meta=LM.meta.asr;
+  if(!sample || !meta) return "";
+  const disabled=LM.busy||LM.loading||LM.asrBusy||lifeMateMicActive();
+  const audioURL=LM.audioURL || "/api/lifemate/audio?split="+encodeURIComponent(LM.split)+"&id="+encodeURIComponent(LM.sampleId);
+  return `<div class="lm-asr"><div class="lm-row"><b>Audio → văn bản</b><span class="meta">${esc(meta.name)}</span></div>
+    <div class="lm-actions"><button class="save ${LM_MIC.recorder?'rec':''}" onclick="${LM_MIC.recorder?'lifeMateFinishMic()':'lifeMateStartMic()'}" ${LM_MIC.recorder?'':disabled?'disabled':''}>${LM_MIC.recorder?'Dừng & nhận dạng':LM_MIC.starting?'Đang mở micro…':'Ghi âm bằng micro'}</button>
+      ${lifeMateMicActive()?`<span id="lm-mic-timer" class="meta" role="status">${LM_MIC.recorder?Math.floor(LM_MIC.recorder.seconds)+' giây':'Đang xin quyền…'}</span><button class="sessbtn" onclick="lifeMateCancelMic(); LM.phase=''; lifeMatePaint()">Huỷ ghi âm</button>`:""}</div>
+    <div class="meta">Bấm ghi âm, cho phép micro và nói yêu cầu. Dừng để chuyển giọng nói thành văn bản; agent chỉ chạy khi bạn bấm Chạy yêu cầu.</div>
+    ${LM.audioURL||sample.audio_available?`<audio controls preload="none" src="${esc(audioURL)}" aria-label="${LM.audioURL?'Nghe bản ghi đã chọn':'Nghe audio của mẫu'}"></audio>`:""}
+    <label class="lm-field">Thay audio câu hiện tại (tuỳ chọn)
+      <input type="file" accept=".wav,.flac,.ogg" aria-label="Audio ASR" onchange="lifeMateAudioFile(this.files[0])" ${disabled?"disabled":""}></label>
+    <div class="meta">${LM.audioFile?esc(LM.audioFile.name):"Dùng audio của mẫu đã chọn"} · WAV, FLAC, OGG · tối đa 16 MB / ${meta.max_seconds} giây.
+      Audio lịch sử vẫn lấy từ mẫu. ASR chạy trên máy này; lần đầu có thể cần tải model.</div>
+    <div class="lm-actions"><button class="save" onclick="lifeMateRecognize('live')" ${disabled||!meta.adapter_available?"disabled":""}>${LM.asrBusy?"Đang nhận dạng…":"Chạy ASR từ audio"}</button>
+      <button class="sessbtn" onclick="lifeMateRecognize('saved')" ${disabled||!sample.saved_asr_available||LM.audioFile?"disabled":""}>Dùng prediction có sẵn</button></div>
+    ${!meta.adapter_available?'<div class="lm-error">Chưa tìm thấy checkpoint ASR. Kiểm tra cấu hình đường dẫn adapter.</div>':""}
+    <div class="meta">${meta.saved_predictions} prediction trong evaluation_improved_v2. ${LM.asrBusy?"Đang xử lý câu hiện tại và lịch sử; có thể mất vài phút trên CPU.":"Nhận dạng xong, kiểm tra transcript bên dưới rồi bấm Chạy yêu cầu."}</div>
+    ${LM.asrResult?`<details><summary>Transcript ASR (${LM.asrResult.clips.length} audio · ${LM.asrResult.mode==="saved"?"có sẵn":"nhận dạng mới"})</summary><pre>${esc(JSON.stringify(LM.asrResult.clips,null,2))}</pre></details>`:""}
+    </div>`;
+}
+
+function lifeMateAudioFile(file){
+  if(lifeMateMicActive()) return;
+  LM.error="";
+  if(file && file.size>16*1024*1024){LM.error="Audio vượt quá 16 MB"; file=null;}
+  LM.audioFile=file||null;
+  if(LM.audioURL) URL.revokeObjectURL(LM.audioURL);
+  LM.audioURL=file instanceof Blob?URL.createObjectURL(file):null;
+  LM.audioPending=!!file;
+  LM.phase=file?"Hãy chạy ASR để nhận dạng file vừa chọn":"";
+  lifeMatePaint();
+}
+
+async function lifeMateRecognize(mode){
+  if(!LM.sample || LM.busy || LM.loading || LM.asrBusy || lifeMateMicActive()) return;
+  const request=LM.request, payload={split:LM.split,sample_id:LM.sampleId,mode};
+  LM.asrBusy=true; LM.error=""; LM.result=null; LM.skills=[]; LM.tools=[]; LM.phase="";
+  lifeMatePaint();
+  try {
+    if(mode==="live" && LM.audioFile){
+      payload.audio_base64=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(reader.result.split(",")[1]);
+        reader.onerror=()=>reject(new Error("Không đọc được file audio"));
+        reader.readAsDataURL(LM.audioFile);
+      });
+    }
+    const response=await fetch("/api/lifemate/asr",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    if(!response.ok) throw new Error("Không chạy được ASR (HTTP "+response.status+")");
+    const data=await response.json();
+    if(data.error) throw new Error(data.error);
+    if(request!==LM.request) return;
+    LM.text=data.text; LM.asrTranscripts=data.transcripts; LM.asrResult=data;
+    LM.audioPending=false;
+    LM.sample={...LM.sample,text:data.text,history:data.history,transcript_error:""};
+    LM.phase="ASR hoàn tất · kiểm tra transcript trước khi chạy agent";
+  } catch(e){if(request===LM.request) LM.error=e.message;}
+  finally {LM.asrBusy=false; lifeMatePaint();}
+}
 
 function lifeMatePickers(){
-  return `<div class="lm-pickers"><label class="lm-field">Bộ dữ liệu<select aria-label="Bộ dữ liệu" onchange="lifeMateSetSplit(this.value)" ${LM.busy?"disabled":""}>
+  return `<div class="lm-pickers"><label class="lm-field">Bộ dữ liệu<select aria-label="Bộ dữ liệu" onchange="lifeMateSetSplit(this.value)" ${LM.busy||LM.asrBusy||lifeMateMicActive()?"disabled":""}>
     ${LM.meta.splits.map(s=>`<option value="${esc(s)}" ${s===LM.split?"selected":""}>${esc(s)}</option>`).join("")}</select></label>
-    <label class="lm-field">Mẫu thử<select aria-label="Mẫu thử" onchange="lifeMateSelectSample(this.value)" ${LM.busy||LM.loading?"disabled":""}>
+    <label class="lm-field">Mẫu thử<select aria-label="Mẫu thử" onchange="lifeMateSelectSample(this.value)" ${LM.busy||LM.asrBusy||LM.loading||lifeMateMicActive()?"disabled":""}>
     ${LM.samples.map(s=>`<option value="${esc(s.id)}" ${s.id===LM.sampleId?"selected":""}>${esc(s.id)}</option>`).join("")}</select></label></div>`;
 }
 
@@ -79,7 +186,8 @@ function lifeMateView(){
     content = `<div class="lm-run-grid"><section class="card lm-editor">
       <div class="section-head"><h2>Yêu cầu thực thi</h2><span class="meta">${esc(LM.split)}</span></div>
       ${lifeMatePickers()}
-      <label class="lm-field">Nội dung yêu cầu<textarea id="lm-text" rows="5" ${LM.busy||LM.loading?"disabled":""}
+      ${lifeMateASR()}
+      <label class="lm-field">Nội dung yêu cầu<textarea id="lm-text" rows="5" ${LM.busy||LM.asrBusy||LM.loading||lifeMateMicActive()?"disabled":""}
         oninput="lifeMateEditText(this.value)" placeholder="Nhập hoặc sửa transcript trước khi chạy…">${esc(LM.text)}</textarea></label>
       ${sample && sample.transcript_error ? `<div class="lm-error">Thiếu transcript lịch sử: ${esc(sample.transcript_error)}</div>` : ""}
       <div class="lm-actions"><button class="save" id="lm-run" onclick="lifeMateRun()" ${!lifeMateCanRun()?"disabled":""}>${LM.busy?"Đang chạy…":"Chạy yêu cầu"}</button>
@@ -120,12 +228,12 @@ function lifeMatePaint(){
   document.getElementById("view").innerHTML = lifeMateView();
   main.scrollTop = y;
 }
-function lifeMateSetTab(tab){LM.tab=tab; location.hash=tab==="run"?"#lifemate":"#lifemate/"+tab; lifeMatePaint();}
+function lifeMateSetTab(tab){if(tab!=="run") lifeMateCancelMic(); LM.tab=tab; location.hash=tab==="run"?"#lifemate":"#lifemate/"+tab; lifeMatePaint();}
 function lifeMateFilterSkills(value){
   LM.filter=value;
   document.getElementById("lm-skill-list").innerHTML=lifeMateSkillCards();
 }
-function lifeMateCanRun(){return !!(LM.sample && !LM.sample.transcript_error && LM.text.trim() && !LM.busy && !LM.loading);}
+function lifeMateCanRun(){return !!(LM.sample && !LM.sample.transcript_error && LM.text.trim() && !LM.busy && !LM.asrBusy && !LM.loading && !LM.audioPending && !lifeMateMicActive());}
 function lifeMateEditText(value){
   LM.text=value;
   const button=document.getElementById("lm-run"); if(button) button.disabled=!lifeMateCanRun();
@@ -171,7 +279,7 @@ async function lifeMateChatScope(){
   return LM.sample ? {split:LM.split,sample_id:LM.sampleId} : null;
 }
 async function lifeMateSetSplit(split){
-  if (LM.busy) return;
+  if (LM.busy || LM.asrBusy || lifeMateMicActive()) return;
   LM.split=split; LM.sample=null; LM.catalog=null; LM.loading=true; LM.error=""; LM.result=null;
   lifeMatePaint();
   try {
@@ -186,9 +294,11 @@ async function lifeMateSetSplit(split){
   } catch(e){LM.error=e.message; LM.loading=false; lifeMatePaint();}
 }
 async function lifeMateSelectSample(id){
-  if (LM.busy) return;
+  if (LM.busy || LM.asrBusy || lifeMateMicActive()) return;
   const request=++LM.request, split=LM.split;
   LM.sampleId=id; LM.sample=null; LM.catalog=null; LM.loading=true; LM.error=""; LM.result=null;
+  LM.asrTranscripts=null; LM.asrResult=null; LM.audioFile=null; LM.audioPending=false;
+  if(LM.audioURL) URL.revokeObjectURL(LM.audioURL); LM.audioURL=null;
   LM.skills=[]; LM.tools=[]; LM.phase=""; lifeMatePaint();
   try {
     const data=await lifeMateJSON("/api/lifemate/sample?split="+encodeURIComponent(split)+"&id="+encodeURIComponent(id));
@@ -223,6 +333,7 @@ async function lifeMateRun(){
   if(!lifeMateCanRun()) return;
   LM.busy=true; LM.error=""; LM.result=null; LM.skills=[]; LM.tools=[]; LM.phase="Đang khởi động…";
   const payload={run_id:crypto.randomUUID(),split:LM.split,sample_id:LM.sampleId,text:LM.text};
+  if(LM.asrTranscripts) payload.asr_transcripts=LM.asrTranscripts;
   lifeMatePaint();
   try {
     const response=await fetch("/api/lifemate/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});

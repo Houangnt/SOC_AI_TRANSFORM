@@ -904,6 +904,12 @@ class Handler(BaseHTTPRequestHandler):
                     out = lifemate_ui.samples(split)
                 elif url.path == "/api/lifemate/sample":
                     out = lifemate_ui.sample(split, query.get("id", [""])[0])
+                elif url.path == "/api/lifemate/audio":
+                    path = lifemate_ui.audio_path(split, query.get("id", [""])[0])
+                    if path.stat().st_size > 16 * 1024 * 1024:
+                        raise ValueError("Audio vượt quá 16 MB")
+                    self._send(path.read_bytes(), "audio/wav")
+                    return
                 elif url.path == "/api/lifemate/skill":
                     out = lifemate_ui.skill(query.get("id", [""])[0])
                 elif url.path == "/api/lifemate/tools":
@@ -1005,6 +1011,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
+        if self.path == "/api/lifemate/asr":
+            from SOC_AI_TRANSFORM.lifemate import ui as lifemate_ui
+
+            if not 0 < length <= 23 * 1024 * 1024:
+                self.close_connection = True
+                self.send_error(413, "ASR request too large or empty")
+                return
+            try:
+                payload = json.loads(self.rfile.read(length))
+                out = lifemate_ui.recognize(payload)
+            except Exception as exc:
+                out = {"error": str(exc)}
+            self._send(json.dumps(out, ensure_ascii=False).encode(), "application/json")
+            return
         if self.path == "/api/lifemate/run":
             from SOC_AI_TRANSFORM.lifemate import ui as lifemate_ui
 

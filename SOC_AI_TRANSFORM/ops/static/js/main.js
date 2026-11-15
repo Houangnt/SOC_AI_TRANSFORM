@@ -199,22 +199,13 @@ async function stopMic(){
   if (r.text){ input.value = r.text; input.focus(); }
 }
 
-// float32 chunks → 16-bit PCM mono WAV blob
-function encodeWAV(chunks, rate){
-  let n = 0; chunks.forEach(c => n += c.length);
-  const pcm = new Float32Array(n); let off = 0; chunks.forEach(c => { pcm.set(c, off); off += c.length; });
-  const buf = new ArrayBuffer(44 + pcm.length * 2), view = new DataView(buf);
-  const str = (o, s) => { for (let i=0;i<s.length;i++) view.setUint8(o+i, s.charCodeAt(i)); };
-  str(0,"RIFF"); view.setUint32(4, 36 + pcm.length*2, true); str(8,"WAVE"); str(12,"fmt ");
-  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
-  view.setUint32(24,rate,true); view.setUint32(28,rate*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
-  str(36,"data"); view.setUint32(40, pcm.length*2, true);
-  let o = 44; for (let i=0;i<pcm.length;i++){ const s = Math.max(-1, Math.min(1, pcm[i])); view.setInt16(o, s<0 ? s*0x8000 : s*0x7FFF, true); o += 2; }
-  return new Blob([view], {type:"audio/wav"});
-}
 function wireMic(){ const b = document.getElementById("mic"); if (b) b.onclick = toggleMic; }
 
-window.addEventListener("hashchange", render);
+window.addEventListener("hashchange", () => {
+  if(location.hash !== "#lifemate") lifeMateCancelMic();
+  render();
+});
+window.addEventListener("pagehide", lifeMateCancelMic);
 window.__hold = (v)=>{ animating = v; };   // test hook: freeze the diagram
 wireDock(); wireChrome(); wireMic();
 refresh(); setInterval(refresh, 5000); setInterval(tickLive, 1000);
