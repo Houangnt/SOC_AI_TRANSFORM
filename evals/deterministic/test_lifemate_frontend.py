@@ -27,6 +27,7 @@ const frames = [{kind:'business_skills',skills:['contacts'],rules:[]},
   {kind:'tool',tool:'contacts.search',args:{query:'Test'},output:'{"ok":true}'},done];
 const wire=encoder.encode(frames.map(e=>'data: '+JSON.stringify(e)+'\n\n').join(''));
 const context=vm.createContext({console,VIEWS:{},TextDecoder,Blob,URL,setTimeout,setInterval,clearInterval,
+  archSVG:()=>'',gateSplit:()=>'',graphPanel:()=>'',
   location:{hash:'#lifemate'},
   crypto:{randomUUID:()=> 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'},
   document:{getElementById:element,querySelector:()=>main,querySelectorAll:()=>[]},
@@ -39,6 +40,7 @@ const context=vm.createContext({console,VIEWS:{},TextDecoder,Blob,URL,setTimeout
     }})}};
   }});
 vm.runInContext(fs.readFileSync('SOC_AI_TRANSFORM/ops/static/js/util.js','utf8'),context);
+vm.runInContext(fs.readFileSync('SOC_AI_TRANSFORM/ops/static/js/views.js','utf8'),context);
 vm.runInContext(fs.readFileSync('SOC_AI_TRANSFORM/ops/static/js/lifemate.js','utf8'),context);
 vm.runInContext(fs.readFileSync('SOC_AI_TRANSFORM/ops/static/js/render.js','utf8'),context);
 vm.runInContext(`LM.meta={available:true,splits:['public_test'],provider:'fake',rules:6,
@@ -71,6 +73,19 @@ assert.equal(vm.runInContext('lifeMateCanRun()',context),true);
   tools=vm.runInContext('lifeMateCatalogCards()',context);
   assert.ok(tools.includes('banking.transfer'));
   assert.ok(!tools.includes('save_note'));
+  vm.runInContext('LM.sample.text="<img src=x onerror=alert(1)>";lifeMateSyncChatScope()',context);
+  const overview=vm.runInContext(`VIEWS.overview({stats:{turns:2,tool_calls:5},
+    facts:[],episodes:[],turns:[]})`,context);
+  assert.ok(overview.includes('id="overview-available-tools">1</b>'));
+  assert.ok(overview.includes('Lượt gọi đã ghi</span><b>5</b>'));
+  assert.ok(!overview.includes('<img src=x'));
+  assert.ok(overview.includes('&lt;img src=x'));
+  assert.equal(element('overview-available-tools').textContent,1);
+  const quota=vm.runInContext(`renderAssistantReply('RateLimitError: 429 quota exceeded <script>')`,context);
+  assert.ok(quota.includes('Đã đạt giới hạn API'));
+  assert.ok(quota.includes('&lt;script&gt;'));
+  assert.ok(!quota.includes('<script>'));
+  assert.equal(vm.runInContext('renderAssistantReply("Xin chào")',context),'<div class="mdp">Xin chào</div>');
   vm.runInContext('LM.ready=Promise.resolve(); LM.tab="run"',context);
   await vm.runInContext('sendChat({value:"Bạn có tool gì?",focus(){}})',context);
   assert.equal(requests.length,2);

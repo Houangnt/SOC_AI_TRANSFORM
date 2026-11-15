@@ -89,14 +89,24 @@ const usageFooter = t => t.usage
 const teleFooter = t => `<div class="meta tele">${secs(t.latency_ms)} · ${t.iterations??"?"} iter${
   t.model?` · ${esc(t.model)}`:""}${t.consolidation?` · consolidated ${t.consolidation.new_facts} fact(s)`:""}</div>`;
 
+function renderAssistantReply(text){
+  const value=String(text||"");
+  if(/^(?:Error|[\w.]*Error):/i.test(value) && /(?:429|RESOURCE_EXHAUSTED)/i.test(value)
+      && /(?:quota|rate.limit)/i.test(value)){
+    return `<div class="reply-error"><b>Đã đạt giới hạn API của model</b><p>Model hiện chưa nhận thêm yêu cầu. Bạn có thể thử lại sau hoặc đổi model trong cấu hình.</p>
+      <details><summary>Xem chi tiết lỗi</summary><pre>${esc(value)}</pre></details></div>`;
+  }
+  return renderMarkdown(value);
+}
+
 const chatTurnCard = t => `<div class="card">
-  <button class="msg-copy" onclick="copyMsg(this)" data-text="${esc(t.reply)}" title="Copy reply">Copy</button>
+  <button class="msg-copy" onclick="copyMsg(this)" data-text="${esc(t.reply)}" title="Sao chép phản hồi">Sao chép</button>
   ${t.sample_id?`<div class="meta">LifeMate · ${esc(t.split||"")} / ${esc(t.sample_id)}</div>`:""}
   ${(t.gate||t.graph)?`${stagesRow(t, false)}
     <div class="meta tele" style="margin:0 0 6px">${esc((t.gate&&t.gate.reason)||(t.graph&&t.graph.reason)||"")}</div>`:""}
   ${nodesRow(t)}
   ${(t.tools||[]).length?`<div class="tele">${(t.tools||[]).map(toolRow).join("")}</div>`:""}
-  <div class="r" style="margin-top:8px">${renderMarkdown(t.reply)}</div>
+  <div class="r" style="margin-top:8px">${renderAssistantReply(t.reply)}</div>
   ${usageFooter(t)}
   ${teleFooter(t)}
 </div>`;
@@ -124,9 +134,9 @@ const streamingCard = m => `<div class="card">
   ${(m.tools||[]).map(toolRow).join("")}
   ${m.stream
      ? `<div class="r" style="margin-top:8px">${renderMarkdown(m.stream)}<span class="caret"></span></div>`
-     : `<div class="meta" style="margin:0">thinking&hellip;${m.started?` ${Math.round((Date.now()-m.started)/1000)}s`:""}${
+     : `<div class="meta" style="margin:0">Đang xử lý&hellip;${m.started?` ${Math.round((Date.now()-m.started)/1000)}s`:""}${
          m.started && Date.now()-m.started > 20000
-         ? `<br>still waiting: slow models (free tiers especially) can queue for a while; this errors out at the SOC_AI_TRANSFORM_LLM_TIMEOUT limit instead of hanging forever`
+         ? `<br>Đang chờ phản hồi từ model. Lượt chạy sẽ báo lỗi nếu vượt quá thời gian chờ.`
          : ""}</div>`}
 </div>`;
 
@@ -135,13 +145,13 @@ const streamingCard = m => `<div class="card">
 // "[tools used: ...]" annotation — strip both so the thread reads cleanly.
 const stripTools = t => (t || "").replace(/\s*\[tools used:[\s\S]*\]\s*$/, "").trim();
 const historicalCard = m => `<div class="card">
-  <button class="msg-copy" onclick="copyMsg(this)" data-text="${esc(stripTools(m.reply))}" title="Copy reply">Copy</button>
-  <div class="r">${renderMarkdown(stripTools(m.reply))}</div>
+  <button class="msg-copy" onclick="copyMsg(this)" data-text="${esc(stripTools(m.reply))}" title="Sao chép phản hồi">Sao chép</button>
+  <div class="r">${renderAssistantReply(stripTools(m.reply))}</div>
 </div>`;
 
 function renderChatLog(){
   if (!CHAT.length)
-    return `<div class="empty" style="padding:6px 2px">Message SOC_AI_TRANSFORM here from any tab. Open Overview to watch it flow through the harness, or the Gateway tab to see every channel's messages together.</div>`;
+    return `<div class="chat-empty"><b>Bắt đầu một hội thoại</b>Hỏi về tool khả dụng hoặc thử một yêu cầu với mẫu đang chọn ở LifeMate.<button class="sessbtn" onclick="document.getElementById('dmsg').value='Bạn có những tool nào?';document.getElementById('dmsg').focus()">Bạn có những tool nào?</button></div>`;
   return CHAT.map(m => m.role==="user"
       ? `<div class="bubble">${esc(m.text)}</div>`
       : m.pending ? streamingCard(m)
@@ -248,6 +258,11 @@ async function sendChat(fromInput){
   }
   syncChatLogs();
   input.focus();
+}
+function openChat(){
+  document.body.classList.remove("dock-closed");
+  localStorage.setItem("dockClosed", "0");
+  document.getElementById("dmsg")?.focus();
 }
 function wireDock(){
   const b = document.getElementById("dsend"), i = document.getElementById("dmsg");

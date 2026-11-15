@@ -52,11 +52,11 @@ Nhấn `Ctrl+C` để dừng. Sau khi sửa `.env` hoặc cập nhật backend, 
 1. Mở **http://localhost:9000/#lifemate**. Đây là trang mở mặc định của dashboard.
 2. Chọn **public_test** hoặc **train**, rồi chọn mã mẫu.
 3. Kiểm tra hoặc sửa transcript trong ô **Yêu cầu cần thử**. Context và history lấy từ mẫu đã chọn.
-4. Bấm **Chạy với bộ skill mới**. Xem skill được chọn, tham số và kết quả từng tool call.
+4. Bấm **Chạy yêu cầu**. Xem skill được chọn, tham số và kết quả từng tool call.
 5. Khi kết thúc, xem `state_hash` và bấm **Tải submission.jsonl** để lưu kết quả của mẫu.
 
-Tab **Bộ skill (50)** cho phép tìm và đọc 49 nghiệp vụ cùng 1 skill điều phối.
-Tab **Tools cuộc thi** hiển thị schema chính thức và quyền dùng tool của mẫu đã chọn.
+Tab **Nghiệp vụ (50)** cho phép tìm và đọc 49 nghiệp vụ cùng 1 skill điều phối.
+Tab **Thư viện tool** hiển thị schema chính thức và quyền dùng tool của mẫu đã chọn.
 Ba skill demo cũ `weekly-brief`, `schedule-meeting`, `meeting-prep` đã được gỡ.
 Khung chat demo được ẩn trên trang LifeMate; các trang phát triển khác vẫn giữ nguyên.
 
@@ -137,13 +137,13 @@ trace vẫn nằm trong `.SOC_AI_TRANSFORM/traces/`. Facts, episodes và lịch 
 Khi suy luận mẫu thi, chỉ context/history của mẫu được dùng; không tự truy hồi bộ nhớ
 cá nhân hoặc dữ liệu của các lượt chạy khác, và không tự tổng hợp mẫu thi thành facts.
 
-Trang **Tools cuộc thi** đọc chính catalog mà runner dùng: train có 147 tool,
+Trang **Thư viện tool** đọc chính catalog mà runner dùng: train có 147 tool,
 public_test có 122 tool. Chọn mẫu để xem tool được phép; `sys.ask_missing_info`
 luôn có sẵn. Bỏ bộ lọc để xem toàn catalog của split.
 
-## Chat Overview dùng LifeMate
+## Chat Tổng quan dùng LifeMate
 
-Khung chat ở Overview và các trang phát triển dùng cùng mẫu được chọn trên LifeMate.
+Khung chat ở Tổng quan và các trang phát triển dùng cùng mẫu được chọn trên LifeMate.
 Nút phía trên khung chat hiển thị split/mã mẫu và đưa về màn hình chọn mẫu.
 Mỗi yêu cầu thực thi trong chat là một lượt thử mới, không nối trạng thái của các lượt
 chạy trước vào môi trường mẫu. Memory DB vẫn lưu toàn bộ lịch sử.

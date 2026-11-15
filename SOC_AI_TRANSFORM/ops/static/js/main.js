@@ -8,19 +8,20 @@ let activeView = null, activeSub = null;
 // moved: after the Connections registry took keys, providers and integrations
 // out of that page, what remained was two switches that change how a turn runs,
 // which is a behaviour, not a setting.
-const TITLES = {lifemate:"LifeMate — chạy nghiệp vụ", chat:"Chat & watch", ops:"LLM Ops",
-                "lifemate/tools":"LifeMate — tools cuộc thi",
-                "lifemate/skills":"LifeMate — skill nghiệp vụ",
-                graph:"Graph workflows — structure around the loop",
+const TITLES = {overview:"Tổng quan",lifemate:"Chạy thử LifeMate", chat:"Hội thoại", gateway:"Hội thoại", ops:"Theo dõi & đánh giá",
+                "lifemate/tools":"Thư viện tool",
+                "lifemate/skills":"Nghiệp vụ",
+                loop:"Lịch sử thực thi",memory:"Bộ nhớ",
+                graph:"Luồng xử lý",
                 // Keyed by view AND sub for the Arena, now that the sidebar
                 // names the two races separately. A single title covering both
                 // was right while they hid behind sub-tabs; with two nav rows
                 // it reads as a page that does not know which one you clicked.
-                compare:"Arena — race models and memory through the same loop",
-                "compare/models":"Model race — ten brains, one harness",
-                "compare/memory":"Memory race — one brain, five places to put facts",
-                settings:"Behaviour — how a turn runs",
-                database:"Database — everything SOC_AI_TRANSFORM stores (state.db)"};
+                compare:"So sánh",models:"Model AI",connections:"Kết nối",
+                "compare/models":"So sánh model",
+                "compare/memory":"So sánh bộ nhớ",
+                settings:"Thiết lập",
+                database:"Cơ sở dữ liệu"};
 function render(){
   if (!D) return;
   const [v, subRaw] = (location.hash||"#lifemate").slice(1).split("/");
@@ -61,6 +62,8 @@ function render(){
     if (keepScroll) main.scrollTop = y;
   }
   activeView = view; activeSub = sub;
+  const devNav=document.getElementById("dev-nav");
+  if(devNav && ["loop","graph","database","ops","compare"].includes(view)) devNav.open=true;
   document.getElementById("model").textContent = `${D.provider} · ${D.model}`;
   document.getElementById("n-gw").textContent = (D.chat_log||[]).length;
   document.getElementById("n-loop").textContent = D.stats.turns;
@@ -77,7 +80,7 @@ function tickLive(){
   if (!D) return;
   const ago = Math.round((Date.now()-lastFetch)/1000);
   document.getElementById("sub").innerHTML =
-    `<span class="live"><span class="dot"></span>live</span> · updated ${ago}s ago · ${esc(D.home)}`;
+    `<span class="live"><span class="dot"></span>Đang kết nối</span> · cập nhật ${ago}s trước`;
 }
 let dockRestored = false;
 async function restoreDock(){
@@ -139,7 +142,11 @@ function wireChrome(){
   const nt = document.getElementById("nav-toggle"), nr = document.getElementById("nav-reopen");
   if (nt) nt.onclick = () => setNav(true);
   if (nr) nr.onclick = () => setNav(false);
-  setNav(localStorage.getItem("navHidden") === "1");
+  document.getElementById("nav")?.addEventListener("click",e=>{
+    if(window.innerWidth<760 && e.target.closest("a[data-v]")) setNav(true);
+  });
+  const navSaved=localStorage.getItem("navHidden");
+  setNav(navSaved===null ? window.innerWidth<760 : navSaved==="1");
 }
 
 // --- voice on the dashboard: record in the browser, transcribe on the server

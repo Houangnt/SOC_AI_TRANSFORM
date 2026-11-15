@@ -6,7 +6,8 @@ files to change the UI; edit `dashboard.py` to change the server/API.
 
 - `index.html` — the shell (sidebar nav, `<main>`, chat dock) + the ordered
   `<script>` tags.
-- `style.css` — one flat file, `:root` design tokens at the top, light + dark.
+- `style.css` — base component styles.
+- `workspace.css` — charcoal/red theme, workspace layout and responsive overrides; loaded after `style.css`.
 - `js/` — the app, split by concern (below).
 
 ## The files (`js/`), in load order
@@ -24,6 +25,7 @@ runs the bootstrap and must load last**.
 | `diagram.js` | `archSVG` (the architecture chart) **and** its live animation (`STAGE`/`hot`/`pollEvents`) |
 | `graph.js`   | graph workflows: data-driven topology chart (`graphSVG` from `d.graph.workflows`), the Overview panel (`graphPanel`), and `animateGraphStage` for `graph_*`/`route` events |
 | `views.js`   | subtab/db helpers, SQL console, Memory/Tools sub-views, the `VIEWS` router object |
+| `lifemate.js` | sample selection, business skills, official tool catalog and execution/results UI |
 | `compare.js` | the Model arena (`Arena` tab; internals keep the `compare` name) — race one message through several models at once |
 | `dock.js`    | chat sessions/history (`loadThreadInto`), model chip, stats toggle |
 | `main.js`    | `render`/`refresh` loop, resizers, voice, and the bootstrap (**loads last**) |
@@ -54,7 +56,8 @@ Data flows one way: `refresh()` (main.js) fetches `/api/data` into the global
 
 ## Verifying a change (no JS test runner exists)
 
-Frontend logic is not unit-tested; verify in the browser preview:
+The LifeMate SSE lifecycle and overview rendering are checked with Node by
+`evals/deterministic/test_lifemate_frontend.py`. Also verify in a browser:
 `make dashboard` (or the preview tool) → hard-reload `localhost:9000` → click the
 sidebar tabs and the chat dock → check the console shows **zero errors**. The
 Python side (`dashboard.py` endpoints, `_thread_history`, pins, session resume)

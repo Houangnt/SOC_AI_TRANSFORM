@@ -424,6 +424,18 @@ function connectionModalKeydown(event){
   if (event.key === "Escape") closeConnectionModal();
 }
 
+let overviewHarnessOpen=false;
+function overviewSample(){
+  if(LM.loading) return '<div class="workspace-empty">Đang nạp mẫu…</div>';
+  if(!LM.sample) return '<div class="workspace-empty">Chọn mẫu ở LifeMate để xem yêu cầu và tool khả dụng.</div><a href="#lifemate" class="text-link">Chọn mẫu thử</a>';
+  const apps=Object.keys(LM.sample.context?.installed_apps||{});
+  return `<a href="#lifemate/tools" class="sample-label" id="overview-tool-scope">${esc(LM.split+" / "+LM.sampleId)}</a>
+    <p class="sample-quote">${esc(LM.sample.text||"Mẫu này chưa có transcript. Nhập nội dung ở trang chạy thử.")}</p>
+    <div class="sample-caption">${apps.length} ứng dụng trong ngữ cảnh mẫu</div>
+    <div class="lm-apps">${apps.slice(0,6).map(a=>`<span>${esc(a)}</span>`).join("")}${apps.length>6?`<span>+${apps.length-6}</span>`:""}</div>
+    <a href="#lifemate" class="text-link">Mở mẫu và chạy thử</a>`;
+}
+
 const VIEWS = {
   models(d){
     // Provider card grid (logo / status dot / edit / enable-disable). Editing
@@ -459,24 +471,42 @@ const VIEWS = {
     return h;
   },
   overview(d){
-    const s = d.stats;
-    const u = d.usage || {total_cost:0};
-    const available = LM.sample && LM.catalog && !LM.loading ? LM.catalog.enabled_count : "—";
-    const tiles = [
-        [money(u.total_cost),"spent · all-time","money"],[secs(s.latency_avg),"avg turn",""],
-        [s.turns,"turns",""],[s.tool_calls,"Lượt gọi đã ghi",""],
-        [d.facts.length,"facts",""],[d.calendar.length,"events",""],
-      ].map(([v,l,c])=>`<div class="tile"><b class="${c}">${v}</b><span>${l}</span></div>`).join("");
-    return `<div class="tiles">${tiles}
-      <div class="tile"><b id="overview-available-tools">${available}</b><span>Tool khả dụng</span></div></div>
-    <div class="meta" style="margin-top:10px">Lượt gọi đã ghi: tổng số lần gọi tool trong lịch sử chạy.
-      Tool khả dụng: số tool được phép dùng trong mẫu <a href="#lifemate/tools" id="overview-tool-scope">${LM.sample ? esc(LM.split+" / "+LM.sampleId) : "chọn ở LifeMate"}</a>.</div>
-    <h2>Retrieval gate — the hero decision</h2>${gateSplit(s)}
-    <h2 style="margin-top:26px">Architecture — click any box <span class="arch-status"></span></h2>
-    ${archSVG(d)}
-    <h2>Graph workflows — when a turn needs shape</h2>
-    ${graphPanel(d)}
-    <h2>Latest turn</h2>${d.turns.length?turnCard(d.turns[0]):'<div class="card empty">no turns yet — talk to SOC_AI_TRANSFORM first</div>'}`;
+    const s=d.stats;
+    const available=LM.sample && LM.catalog && !LM.loading ? LM.catalog.enabled_count : "—";
+    const skillCount=LM.meta ? LM.meta.skills.length+1 : "—";
+    const recent=(d.turns||[]).slice(0,4);
+    const activity=recent.map(t=>{
+      const error=t.unfinished || /^(?:Error|[\w.]*Error):/i.test(t.reply||"") || (t.tools||[]).some(x=>x.status==="error");
+      return `<div class="activity-row ${error?"error":""}"><span class="activity-mark"></span>
+        <div class="activity-copy"><p>${esc(t.user_message||"Lượt chạy không có nội dung")}</p>
+          <small>${(t.tools||[]).length} lượt gọi tool · ${esc(secs(t.latency_ms))}</small></div>
+        <span class="activity-state">${t.unfinished?"Chưa kết thúc":error?"Có lỗi":"Đã kết thúc"}</span></div>`;
+    }).join("");
+    return `<div class="workspace-intro"><div><span class="eyebrow">SOC_AI_TRANSFORM</span>
+      <h2>Không gian vận hành LifeMate</h2>
+      <p>Thử yêu cầu, theo dõi cách agent thực thi và kiểm tra kết quả trong cùng một nơi.</p></div>
+      <a href="#lifemate" class="save">Bắt đầu chạy thử</a></div>
+    <div class="overview-metrics">
+      <div class="metric"><span class="metric-label">Tool khả dụng</span><b id="overview-available-tools">${available}</b><small>Được phép trong mẫu đang chọn</small></div>
+      <div class="metric"><span class="metric-label">Nghiệp vụ</span><b id="overview-skill-count">${skillCount}</b><small>Bao gồm skill điều phối</small></div>
+      <div class="metric"><span class="metric-label">Lượt gọi đã ghi</span><b>${s.tool_calls}</b><small>Tổng lượt gọi tool trong lịch sử</small></div>
+      <div class="metric"><span class="metric-label">Lượt chạy đã ghi</span><b>${s.turns}</b><small>Theo lịch sử thực thi trên máy</small></div>
+    </div>
+    <div class="overview-columns"><section class="card sample-summary"><div class="section-head"><h2>Mẫu đang chọn</h2><a href="#lifemate">Đổi mẫu</a></div>
+      <div id="overview-sample">${overviewSample()}</div></section>
+      <section class="card"><div class="section-head"><h2>Hoạt động gần đây</h2><a href="#loop">Xem tất cả</a></div>
+        <div class="activity-list">${activity||'<div class="workspace-empty">Chưa có lượt chạy nào.<br>Bắt đầu với một mẫu LifeMate để xem quá trình thực thi.</div>'}</div></section></div>
+    <div class="overview-system">
+      <a href="#models" class="system-item"><small>Model đang dùng</small><b>${esc(d.model||d.provider||"Chưa cấu hình")}</b></a>
+      <a href="#memory" class="system-item"><small>Bộ nhớ cá nhân</small><b>${d.facts.length} facts · ${d.episodes.length} episodes</b></a>
+      <a href="#ops" class="system-item"><small>Chi phí API đã ghi</small><b>${money((d.usage||{}).total_cost||0)}</b></a>
+    </div>
+    <details class="harness-details" ${overviewHarnessOpen?"open":""} ontoggle="overviewHarnessOpen=this.open">
+      <summary>Chi tiết harness <span>Kiến trúc, truy hồi bộ nhớ và luồng xử lý</span></summary>
+      <h2>Kiến trúc thực thi</h2>${archSVG(d)}
+      <h2>Truy hồi bộ nhớ</h2>${gateSplit(s)}
+      <h2>Luồng xử lý</h2>${graphPanel(d)}
+    </details>`;
   },
   loop(d){
     return d.turns.length ? d.turns.map(turnCard).join("") : `<div class="card empty">no turns yet</div>`;

@@ -5,9 +5,9 @@ const LM = {started:false, ready:null, meta:null, tab:"run", split:"public_test"
   catalog:null, toolFilter:"", onlyEnabled:true};
 
 function lifeMatePickers(){
-  return `<div class="lm-pickers"><label class="lm-field">Bộ dữ liệu<select onchange="lifeMateSetSplit(this.value)" ${LM.busy?"disabled":""}>
+  return `<div class="lm-pickers"><label class="lm-field">Bộ dữ liệu<select aria-label="Bộ dữ liệu" onchange="lifeMateSetSplit(this.value)" ${LM.busy?"disabled":""}>
     ${LM.meta.splits.map(s=>`<option value="${esc(s)}" ${s===LM.split?"selected":""}>${esc(s)}</option>`).join("")}</select></label>
-    <label class="lm-field">Mẫu thử<select onchange="lifeMateSelectSample(this.value)" ${LM.busy||LM.loading?"disabled":""}>
+    <label class="lm-field">Mẫu thử<select aria-label="Mẫu thử" onchange="lifeMateSelectSample(this.value)" ${LM.busy||LM.loading?"disabled":""}>
     ${LM.samples.map(s=>`<option value="${esc(s.id)}" ${s.id===LM.sampleId?"selected":""}>${esc(s.id)}</option>`).join("")}</select></label></div>`;
 }
 
@@ -76,35 +76,39 @@ function lifeMateView(){
   } else {
     const sample = LM.sample, context = sample && sample.context;
     const appNames = context ? Object.keys(context.installed_apps||{}) : [];
-    content = `<div class="card">
+    content = `<div class="lm-run-grid"><section class="card lm-editor">
+      <div class="section-head"><h2>Yêu cầu thực thi</h2><span class="meta">${esc(LM.split)}</span></div>
       ${lifeMatePickers()}
-      <label class="lm-field">Yêu cầu cần thử<textarea id="lm-text" rows="4" ${LM.busy||LM.loading?"disabled":""}
+      <label class="lm-field">Nội dung yêu cầu<textarea id="lm-text" rows="5" ${LM.busy||LM.loading?"disabled":""}
         oninput="lifeMateEditText(this.value)" placeholder="Nhập hoặc sửa transcript trước khi chạy…">${esc(LM.text)}</textarea></label>
       ${sample && sample.transcript_error ? `<div class="lm-error">Thiếu transcript lịch sử: ${esc(sample.transcript_error)}</div>` : ""}
-      ${context ? `<div class="meta">Thời điểm của mẫu: ${esc(context.current_time)} · ${esc(context.timezone)}</div>
-        <div class="lm-apps">${appNames.map(a=>`<span>${esc(a)}</span>`).join("")}</div>
-        <details><summary>Ngữ cảnh và lịch sử (${(sample.history||[]).length} lượt)</summary><pre>${esc(JSON.stringify({context,history:sample.history},null,2))}</pre></details>` : ""}
-      <div class="lm-actions"><button class="save" id="lm-run" onclick="lifeMateRun()" ${!lifeMateCanRun()?"disabled":""}>${LM.busy?"Đang chạy…":"Chạy với bộ skill mới"}</button>
+      <div class="lm-actions"><button class="save" id="lm-run" onclick="lifeMateRun()" ${!lifeMateCanRun()?"disabled":""}>${LM.busy?"Đang chạy…":"Chạy yêu cầu"}</button>
         <span class="meta">${esc(LM.loading?"Đang nạp mẫu…":LM.phase)}</span></div>
-      <div class="meta lm-disclosure">Nút Chạy gửi transcript, ngữ cảnh, lịch sử và kết quả tool tới ${esc(LM.meta.provider)}. Hành động được thực hiện trong môi trường giả lập của mẫu.</div>
-    </div>
-    ${LM.error ? `<div class="card lm-error">${esc(LM.error)}</div>` : ""}
-    ${LM.skills.length ? `<h2>Skill được chọn</h2><div class="lm-apps">${LM.skills.map(id=>`<button class="sessbtn" data-skill="${esc(id)}" onclick="lifeMateOpenSkill(this.dataset.skill)">${esc((LM.meta.skills.find(s=>s.id===id)||{}).title||id)}</button>`).join("")}</div>` : ""}
-    ${LM.tools.length ? `<h2>Tool calls</h2>${lifeMateTools()}` : LM.busy ? `<div class="card meta">Đang chọn nghiệp vụ và suy luận…</div>` : ""}
-    ${LM.result ? `<h2>Kết quả lượt chạy</h2><div class="card">
+      <div class="meta lm-disclosure">Transcript, ngữ cảnh, lịch sử và kết quả tool được gửi tới ${esc(LM.meta.provider)}. Thao tác thực hiện trong môi trường giả lập.</div>
+    </section><aside class="card lm-context"><div class="section-head"><h2>Ngữ cảnh mẫu</h2></div>
+      ${context ? `<div class="context-label">Mã mẫu</div><div class="context-value">${esc(LM.sampleId)}</div>
+        <div class="context-label">Thời điểm</div><div class="context-value">${esc(context.current_time)}<br>${esc(context.timezone)}</div>
+        <div class="context-label">Ứng dụng khả dụng</div><div class="lm-apps">${appNames.map(a=>`<span>${esc(a)}</span>`).join("")}</div>
+        <div class="context-label">Tool được phép</div><div class="context-value">${LM.catalog?LM.catalog.enabled_count:"—"} tool trong mẫu này</div>
+        <details><summary>Ngữ cảnh và lịch sử (${(sample.history||[]).length} lượt)</summary><pre>${esc(JSON.stringify({context,history:sample.history},null,2))}</pre></details>` : '<div class="meta">Chọn mẫu để xem ngữ cảnh.</div>'}
+    </aside></div>
+    ${LM.error ? `<div class="card lm-error" role="alert">${esc(LM.error)}</div>` : ""}
+    ${LM.skills.length ? `<h2>Nghiệp vụ được chọn</h2><div class="lm-apps">${LM.skills.map(id=>`<button class="sessbtn" data-skill="${esc(id)}" onclick="lifeMateOpenSkill(this.dataset.skill)">${esc((LM.meta.skills.find(s=>s.id===id)||{}).title||id)}</button>`).join("")}</div>` : ""}
+    ${LM.tools.length ? `<h2>Nhật ký gọi tool</h2>${lifeMateTools()}` : LM.busy ? `<div class="card meta" role="status">Đang chọn nghiệp vụ và suy luận…</div>` : ""}
+    ${LM.result ? `<h2>Kết quả thực thi</h2><div class="card">
       ${LM.result.reply ? `<div>${renderMarkdown(LM.result.reply)}</div>` : ""}
-      ${LM.result.submission ? `<div class="meta lm-hash">state_hash</div><code class="lm-hash-value">${esc(LM.result.submission.state_hash)}</code>
+      ${LM.result.submission ? `<div class="meta lm-hash">Mã xác nhận trạng thái · state_hash</div><code class="lm-hash-value">${esc(LM.result.submission.state_hash)}</code>
         <details><summary>JSON nộp bài${LM.result.error?" — lượt chạy chưa hoàn tất":""}</summary><pre>${esc(JSON.stringify(LM.result.submission,null,2))}</pre></details>
         <button class="save" onclick="lifeMateDownload()">Tải submission.jsonl</button>` : ""}
       <div class="meta lm-disclosure">${LM.result.error ? "Có lỗi; kết quả chứa các call đã thực hiện trước khi dừng." : "Đã kết thúc lượt chạy. Đây chưa phải điểm chấm của BTC."}</div>
-    </div>` : ""}`;
+    </div>` : !LM.busy ? `<div class="lm-empty-result"><b>Kết quả sẽ xuất hiện tại đây</b>Chọn mẫu, kiểm tra nội dung rồi bấm Chạy yêu cầu.<br>Bạn có thể xem từng tool call và tải file kết quả sau khi chạy.</div>` : ""}`;
   }
-  return `<div id="lifemate-root"><div class="card lm-intro"><b>Bộ nghiệp vụ LifeMate</b>
-    <span>${LM.meta ? LM.meta.skills.length+" nghiệp vụ · 1 skill điều phối · "+LM.meta.rules+" nhóm quy tắc" : "Nạp bộ skill do BTC cung cấp"}</span>
-    <span class="meta">Chạy bằng SDK chính thức, xem tool calls và state_hash ngay tại đây.</span></div>
+  return `<div id="lifemate-root"><div class="card lm-intro"><span class="eyebrow">LIFEMATE WORKSPACE</span>
+    <b>${LM.tab==="skills"?"Thư viện nghiệp vụ":LM.tab==="tools"?"Công cụ thực thi":"Từ yêu cầu đến kết quả"}</b>
+    <span>${LM.tab==="skills"?"Tra cứu cách agent xử lý từng nghiệp vụ.":LM.tab==="tools"?"Xem schema và quyền dùng tool theo từng mẫu.":"Kiểm tra nội dung, chạy agent và theo dõi hành động trên môi trường giả lập."}</span></div>
     <div class="subtabs"><button class="subtab ${LM.tab==="run"?"on":""}" onclick="lifeMateSetTab('run')">Chạy thử</button>
-      <button class="subtab ${LM.tab==="skills"?"on":""}" onclick="lifeMateSetTab('skills')">Bộ skill (50)</button>
-      <button class="subtab ${LM.tab==="tools"?"on":""}" onclick="lifeMateSetTab('tools')">Tools cuộc thi</button></div>${content}</div>`;
+      <button class="subtab ${LM.tab==="skills"?"on":""}" onclick="lifeMateSetTab('skills')">Nghiệp vụ${LM.meta?" ("+(LM.meta.skills.length+1)+")":""}</button>
+      <button class="subtab ${LM.tab==="tools"?"on":""}" onclick="lifeMateSetTab('tools')">Thư viện tool</button></div>${content}</div>`;
 }
 
 VIEWS.lifemate = lifeMateView;
@@ -155,6 +159,12 @@ function lifeMateSyncChatScope(){
   if(available) available.textContent=LM.sample && LM.catalog && !LM.loading ? LM.catalog.enabled_count : "—";
   const scope=document.getElementById("overview-tool-scope");
   if(scope) scope.textContent=LM.sample ? LM.split+" / "+LM.sampleId : "chọn ở LifeMate";
+  const sample=document.getElementById("overview-sample");
+  if(sample && typeof overviewSample==="function") sample.innerHTML=overviewSample();
+  const skills=document.getElementById("overview-skill-count");
+  if(skills) skills.textContent=LM.meta ? LM.meta.skills.length+1 : "—";
+  const toolCount=document.getElementById("n-tools");
+  if(toolCount) toolCount.textContent=LM.catalog ? LM.catalog.tools.length : "";
 }
 async function lifeMateChatScope(){
   await lifeMateInit();
