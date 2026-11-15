@@ -2,6 +2,11 @@
 
 AI agent LifeMate với dashboard web, bộ skill nghiệp vụ, Gemini và SDK ToolEnv chính thức.
 
+## Giao diện
+
+![Giao diện Tổng quan SOC_AI_TRANSFORM với tông đen–đỏ](assets/ui-overview.png)
+
+*Ảnh minh hoạ giao diện với dữ liệu demo.*
 
 ## Cài và chạy
 
