@@ -1,0 +1,38 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+state.db
+traces/
+*.ics
+.DS_Store
+dist/
+.pytest_cache/
+.ruff_cache/
+.deepeval/
+# Competition assets are provided separately to registered teams.
+business_skills/
+train+public_test/
+train/
+public_test/
+private_test/
+.SOC_AI_TRANSFORM/
+.SOC_AI_TRANSFORM.bak-*/
+.SOC_AI_TRANSFORM.prerename-bak/
+# Any ALTERNATE agent home, not just the default one. DISCORD_HOME gives the
+# bot its own memory (see SOC_AI_TRANSFORM/gateway/discord.py); SOC_AI_TRANSFORM_HOME can point anywhere.
+# Without this glob only `.SOC_AI_TRANSFORM/` was covered, so a second home's SOUL.md,
+# usage.jsonl and outbox/ were tracked — the exact files you least want pushed.
+.SOC_AI_TRANSFORM-*/
+.env.prerename-bak
+
+# Delegated coding deliverables (dated run folders + auto-run logs)
+SOC_AI_TRANSFORM_workspace/
+
+# Google OAuth: the client file you download from Cloud Console, and any token
+# it produces. Nothing here should ever be committed — belt and braces, because
+# the docs used to tell people to drop credentials.json in the repo root.
+credentials.json
+client_secret*.json
+*token*.json
+.gcp/
